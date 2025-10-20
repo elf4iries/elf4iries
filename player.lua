@@ -31,6 +31,10 @@ local decoder = nil
 local volume = 1.0
 local animFrame = 1
 
+if not http then
+    error("HTTP nao esta habilitado! Habilite no config do servidor.")
+end
+
 local main = basalt.getMainFrame()
 main:setBackground(colors.black)
 
@@ -75,13 +79,13 @@ local controlFrame = main:addFrame()
     :setBackground(colors.black)
 
 local nowPlayingLabel = controlFrame:addLabel()
-    :setText("TOCANDO AGORA")
-    :setPosition(3, 1)
+    :setText("TOCANDO")
+    :setPosition(5, 1)
     :setForeground(colors.lightBlue)
 
 local statusLabel = controlFrame:addLabel()
     :setText("Parado")
-    :setPosition(6, 2)
+    :setPosition(5, 2)
     :setForeground(colors.cyan)
 
 local animLabel = controlFrame:addLabel()
@@ -126,7 +130,7 @@ local nextButton = controlFrame:addButton()
 
 local volumeLabel = controlFrame:addLabel()
     :setText("VOL: 100%")
-    :setPosition(4, 11)
+    :setPosition(3, 11)
     :setForeground(colors.lightBlue)
 
 local volDownButton = controlFrame:addButton()
@@ -146,13 +150,13 @@ local volUpButton = controlFrame:addButton()
 local quitButton = controlFrame:addButton()
     :setText("SAIR")
     :setPosition(5, 15)
-    :setSize(6, 2)
+    :setSize(7, 2)
     :setBackground(colors.gray)
     :setForeground(colors.white)
 
 local footerLabel = main:addLabel()
     :setText("Speaker: " .. (speaker and "OK" or "NAO"))
-    :setPosition(20, 24)
+    :setPosition(18, 24)
     :setForeground(speaker and colors.cyan or colors.gray)
 
 local function updateAnimation()
@@ -192,17 +196,24 @@ function playAudio()
     stopAudio()
     
     local songUrl = playlist[currentSong]
-    statusLabel:setText("Carregando")
+    statusLabel:setText("Baixando")
     statusLabel:setForeground(colors.lightBlue)
     
-    audioHandle = http.get(songUrl)
+    local success, handle = pcall(http.get, songUrl)
     
-    if not audioHandle then
-        statusLabel:setText("Erro HTTP")
+    if not success or not handle then
+        statusLabel:setText("Erro!")
         statusLabel:setForeground(colors.gray)
+        sleep(2)
+        currentSong = currentSong + 1
+        if currentSong > #playlist then
+            currentSong = 1
+        end
+        playAudio()
         return
     end
     
+    audioHandle = handle
     decoder = require("cc.audio.dfpwm").make_decoder()
     isPlaying = true
     isPaused = false
