@@ -75,7 +75,8 @@ for i, name in ipairs(songNames) do
     songList:addItem(name)
 end
 
-songList:setValue(songNames[1])
+-- CORREÇÃO AQUI: Use setIndex em vez de setValue
+songList:setIndex(1)
 
 local controlFrame = mainContainer:addFrame()
 controlFrame:setPosition(33, 1)
@@ -101,21 +102,21 @@ statusLabel:setForeground(colors.orange)
 -- Botões centralizados com símbolos
 local playButton = controlFrame:addButton()
 playButton:setText("▶")  -- Símbolo de play
-playButton:setPosition(5, 5)  -- Centralizado horizontalmente
+playButton:setPosition(5, 5)
 playButton:setSize(8, 3)
 playButton:setBackground(colors.green)
 playButton:setForeground(colors.white)
 
 local pauseButton = controlFrame:addButton()
 pauseButton:setText("⏸")  -- Símbolo de pause
-pauseButton:setPosition(5, 9)  -- Centralizado horizontalmente
+pauseButton:setPosition(5, 9)
 pauseButton:setSize(8, 3)
 pauseButton:setBackground(colors.yellow)
 pauseButton:setForeground(colors.black)
 
 local stopButton = controlFrame:addButton()
 stopButton:setText("⏹")  -- Símbolo de stop
-stopButton:setPosition(5, 13)  -- Centralizado horizontalmente
+stopButton:setPosition(5, 13)
 stopButton:setSize(8, 3)
 stopButton:setBackground(colors.red)
 stopButton:setForeground(colors.white)
@@ -177,7 +178,7 @@ local function playNextSong()
     if currentSong > #playlist then
         currentSong = 1
     end
-    songList:selectItem(currentSong)
+    songList:setIndex(currentSong)  -- CORREÇÃO: Use setIndex aqui também
     musicNameLabel:setText(songNames[currentSong])
     playAudio()
 end
@@ -226,7 +227,6 @@ function playAudio()
                 local chunk = audioHandle:read(16 * 1024)
                 
                 if not chunk then
-                    -- Fim da música
                     stopAudio()
                     sleep(0.5)
                     playNextSong()
@@ -235,7 +235,6 @@ function playAudio()
                 
                 local buffer = decoder(chunk)
                 
-                -- Reprodução com tratamento de erro
                 local played = false
                 while not played and isPlaying and not isPaused do
                     played = safePlayAudio(buffer)
@@ -250,15 +249,18 @@ function playAudio()
     end)
 end
 
+-- CORREÇÃO: Ajuste o evento onSelect
 songList:onSelect(function(self, event, item, selected)
-    for i, name in ipairs(songNames) do
-        if name == item then
-            currentSong = i
-            musicNameLabel:setText(name)
-            if isPlaying then
-                playAudio()
+    if selected then
+        for i, name in ipairs(songNames) do
+            if name == item then
+                currentSong = i
+                musicNameLabel:setText(name)
+                if isPlaying then
+                    playAudio()
+                end
+                break
             end
-            break
         end
     end
 end)
@@ -304,4 +306,5 @@ volUpButton:onClick(function()
     volumeBar:setProgress(math.floor(volume * 100))
 end)
 
+basalt.autoUpdate()
 basalt.run()
