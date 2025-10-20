@@ -1,292 +1,213 @@
+-- player.lua
+-- autor: elf4iries 🧚🌿
+-- Music Player Basalt Edition ✨
+
 local basalt = require("basalt")
+local speaker = peripheral.find("speaker")
 
-local main = basalt.createFrame()
-
-local playlist = {
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/AURORA - Apple Tree.f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/AURORA - Cure For Me.f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/AURORA - Murder Song (5, 4, 3, 2, 1).f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Bela Lugosi's Dead (Official Version).f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Conqueror.f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Dark Entries.f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Dracula Teeth.f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Lady Gaga - The Dead Dance (slowed + reverb).f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Monolith.f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Silent Hedges.f234.dfpwm"
-}
-
-local songNames = {}
-for i, url in ipairs(playlist) do
-    local name = url:match("([^/]+)%.f234%.dfpwm$") or ("Musica " .. i)
-    if #name > 28 then
-        name = name:sub(1, 28) .. "..."
-    end
-    songNames[i] = name
+if not speaker then
+    error("Speaker nao encontrado!")
 end
 
-local currentSong = 1
+local SEARCH_API = "https://music.madefor.cc/search"
+local CONNECT_API = "https://music.madefor.cc/stream/"
+
+local searchResults = {}
 local isPlaying = false
 local isPaused = false
-local speaker = peripheral.find("speaker")
-local audioHandle = nil
-local decoder = nil
-local volume = 1.0
+local audioResponse = nil
+local selectedIndex = nil
+local songLength = 0
+local currentTime = 0
 
-main:setBackground(colors.black)
+local mainFrame = basalt.createFrame()
+mainFrame:setBackground(colors.black)
+mainFrame:setForeground(colors.white)
+mainFrame:setSize("parent.w", "parent.h")
 
--- Cabeçalho
-local headerFrame = main:addFrame()
-headerFrame:setPosition(1, 1)
-headerFrame:setSize(51, 4)
-headerFrame:setBackground(colors.blue)
+local title = mainFrame:addLabel()
+title:setText("🎶 Music Player — elf4iries")
+title:setPosition(2, 1)
+title:setForeground(colors.lime)
 
-local titleLabel = headerFrame:addLabel()
-titleLabel:setText("ELFSMUSIC")
-titleLabel:setPosition(16, 2)
-titleLabel:setForeground(colors.white)
+local searchBox = mainFrame:addInput()
+searchBox:setPosition(2, 3)
+searchBox:setSize(30, 1)
+searchBox:setDefaultText("Digite o nome da música...")
 
-local subtitleLabel = headerFrame:addLabel()
-subtitleLabel:setText("by elf4iries")
-subtitleLabel:setPosition(20, 3)
-subtitleLabel:setForeground(colors.lightBlue)
+local searchButton = mainFrame:addButton()
+searchButton:setText("🔍 Buscar")
+searchButton:setPosition(34, 3)
 
--- Container principal
-local mainContainer = main:addFrame()
-mainContainer:setPosition(1, 5)
-mainContainer:setSize(51, 21)
-mainContainer:setBackground(colors.black)
+local songList = mainFrame:addList()
+songList:setPosition(2, 5)
+songList:setSize(40, 9)
+songList:setScrollable(true)
 
--- Lista de músicas
-local listLabel = mainContainer:addLabel()
-listLabel:setText("PLAYLIST:")
-listLabel:setPosition(2, 1)
-listLabel:setForeground(colors.yellow)
-listLabel:setBackground(colors.black)
+local playButton = mainFrame:addButton()
+playButton:setText("▶ Play")
+playButton:setPosition(2, 15)
 
-local listFrame = mainContainer:addFrame()
-listFrame:setPosition(2, 2)
-listFrame:setSize(30, 18)
-listFrame:setBackground(colors.gray)
+local pauseButton = mainFrame:addButton()
+pauseButton:setText("⏸ Pause")
+pauseButton:setPosition(10, 15)
 
-local songList = listFrame:addList()
-songList:setPosition(1, 1)
-songList:setSize(30, 18)
-songList:setBackground(colors.gray)
-songList:setForeground(colors.white)
+local stopButton = mainFrame:addButton()
+stopButton:setText("⏹ Stop")
+stopButton:setPosition(18, 15)
 
--- Adiciona músicas à lista
-for _, name in ipairs(songNames) do
-    songList:addItem(name)
-end
-songList:setSelectedItem(songNames[1])
+local statusLabel = mainFrame:addLabel()
+statusLabel:setText("Pronto.")
+statusLabel:setPosition(2, 17)
+statusLabel:setForeground(colors.yellow)
 
--- Painel de controle
-local controlFrame = mainContainer:addFrame()
-controlFrame:setPosition(33, 1)
-controlFrame:setSize(18, 22)
-controlFrame:setBackground(colors.black)
+-- Barra de progresso animada
+local progressBar = mainFrame:addProgressbar()
+progressBar:setPosition(2, 19)
+progressBar:setSize(40, 1)
+progressBar:setProgress(0)
+progressBar:setForeground(colors.lime)
+progressBar:setBackground(colors.gray)
 
-local nowPlayingLabel = controlFrame:addLabel()
-nowPlayingLabel:setText("TOCANDO:")
-nowPlayingLabel:setPosition(1, 1)
-nowPlayingLabel:setForeground(colors.yellow)
+local progressText = mainFrame:addLabel()
+progressText:setPosition(2, 20)
+progressText:setText("⏳ 0:00 / 0:00")
+progressText:setForeground(colors.lightGray)
 
-local musicNameLabel = controlFrame:addLabel()
-musicNameLabel:setPosition(1, 2)
-musicNameLabel:setSize(18, 1)
-musicNameLabel:setForeground(colors.white)
-musicNameLabel:setText(songNames[1])
-
-local statusLabel = controlFrame:addLabel()
-statusLabel:setText("Parado")
-statusLabel:setPosition(1, 3)
-statusLabel:setForeground(colors.orange)
-
--- Botões
-local playButton = controlFrame:addButton()
-playButton:setText("▶")
-playButton:setPosition(5, 5)
-playButton:setSize(8, 3)
-playButton:setBackground(colors.green)
-playButton:setForeground(colors.white)
-
-local pauseButton = controlFrame:addButton()
-pauseButton:setText("⏸")
-pauseButton:setPosition(5, 9)
-pauseButton:setSize(8, 3)
-pauseButton:setBackground(colors.yellow)
-pauseButton:setForeground(colors.black)
-
-local stopButton = controlFrame:addButton()
-stopButton:setText("⏹")
-stopButton:setPosition(5, 13)
-stopButton:setSize(8, 3)
-stopButton:setBackground(colors.red)
-stopButton:setForeground(colors.white)
-
-local quitButton = controlFrame:addButton()
-quitButton:setText("SAIR")
-quitButton:setPosition(1, 17)
-quitButton:setSize(18, 2)
-quitButton:setBackground(colors.red)
-quitButton:setForeground(colors.white)
-
--- Volume
-local volumeLabel = controlFrame:addLabel()
-volumeLabel:setText("VOLUME:")
-volumeLabel:setPosition(1, 20)
-volumeLabel:setForeground(colors.yellow)
-
-local volumeBar = controlFrame:addProgressbar()
-volumeBar:setPosition(1, 21)
-volumeBar:setSize(18, 1)
-volumeBar:setProgress(100)
-volumeBar:setProgressBar(colors.blue)
-volumeBar:setBackground(colors.gray)
-
-local volDownButton = controlFrame:addButton()
-volDownButton:setText("-")
-volDownButton:setPosition(1, 22)
-volDownButton:setSize(8, 1)
-volDownButton:setBackground(colors.gray)
-volDownButton:setForeground(colors.white)
-
-local volUpButton = controlFrame:addButton()
-volUpButton:setText("+")
-volUpButton:setPosition(10, 22)
-volUpButton:setSize(9, 1)
-volUpButton:setBackground(colors.gray)
-volUpButton:setForeground(colors.white)
-
--- Status do speaker
-local footerLabel = main:addLabel()
-footerLabel:setText("Speaker: " .. (speaker and "OK" or "NAO ENCONTRADO"))
-footerLabel:setPosition(2, 26)
-footerLabel:setForeground(speaker and colors.lime or colors.red)
-
--- Funções
-local function stopAudio()
-    isPlaying = false
-    isPaused = false
-    if audioHandle then pcall(function() audioHandle:close() end) end
-    audioHandle, decoder = nil, nil
-    statusLabel:setText("Parado")
-    statusLabel:setForeground(colors.orange)
+-- função universal para selecionar item (compatível com qualquer Basalt)
+local function selectListItem(list, index)
+    if not list or not index then return end
+    if list.selectItem then
+        list:selectItem(index)
+    elseif list.setIndex then
+        list:setIndex(index)
+    elseif list.setSelected then
+        list:setSelected(index)
+    end
 end
 
-local function safePlayAudio(buffer)
-    if not speaker then return false end
-    local success, result = pcall(function()
-        return speaker.playAudio(buffer, volume)
-    end)
-    return success and result
-end
-
-local function playNextSong()
-    currentSong = currentSong + 1
-    if currentSong > #playlist then currentSong = 1 end
-    songList:setSelectedItem(songNames[currentSong])
-    musicNameLabel:setText(songNames[currentSong])
-    playAudio()
-end
-
-function playAudio()
-    if not speaker then
-        statusLabel:setText("Sem speaker!")
-        statusLabel:setForeground(colors.red)
+-- Busca de músicas
+local function searchMusic(query)
+    statusLabel:setText("Buscando por \"" .. query .. "\"...")
+    local res = http.get(SEARCH_API .. "?q=" .. textutils.urlEncode(query))
+    if not res then
+        statusLabel:setText("Erro na busca.")
         return
     end
-    stopAudio()
-    local songUrl = playlist[currentSong]
-    statusLabel:setText("Carregando...")
-    statusLabel:setForeground(colors.yellow)
 
-    basalt.schedule(function()
-        local success, handle = pcall(http.get, songUrl)
-        if not success or not handle then
-            statusLabel:setText("Erro ao carregar!")
-            statusLabel:setForeground(colors.red)
-            sleep(2)
-            playNextSong()
-            return
+    local data = textutils.unserializeJSON(res.readAll())
+    res.close()
+
+    if not data or #data == 0 then
+        songList:clear()
+        statusLabel:setText("Nenhum resultado encontrado.")
+        return
+    end
+
+    searchResults = data
+    songList:clear()
+    for _, v in ipairs(data) do
+        songList:addItem(v.title or "Sem título", v.author or "")
+    end
+
+    selectListItem(songList, 1)
+    statusLabel:setText("Resultados encontrados: " .. tostring(#data))
+end
+
+-- Atualiza a barra de progresso durante reprodução
+local function updateProgressBar()
+    while isPlaying do
+        if not isPaused and songLength > 0 then
+            currentTime = currentTime + 1
+            local progress = math.min(currentTime / songLength, 1)
+            progressBar:setProgress(progress)
+            progressText:setText(string.format("🎵 %d:%02d / %d:%02d", math.floor(currentTime/60), currentTime%60, math.floor(songLength/60), songLength%60))
         end
+        os.sleep(1)
+    end
+    progressBar:setProgress(0)
+    progressText:setText("⏳ 0:00 / 0:00")
+end
 
-        audioHandle = handle
-        decoder = require("cc.audio.dfpwm").make_decoder()
-        isPlaying, isPaused = true, false
-        statusLabel:setText("Tocando")
-        statusLabel:setForeground(colors.lime)
+-- Reproduzir música
+local function playSong(index)
+    if not searchResults[index] then
+        statusLabel:setText("Selecione uma música primeiro.")
+        return
+    end
 
-        while isPlaying and audioHandle do
-            if not isPaused then
-                local chunk = audioHandle:read(16 * 1024)
-                if not chunk then
-                    stopAudio()
-                    sleep(0.5)
-                    playNextSong()
-                    break
-                end
+    local song = searchResults[index]
+    statusLabel:setText("Baixando " .. song.title .. "...")
+    local res = http.get(CONNECT_API .. song.id)
+    if not res then
+        statusLabel:setText("Erro ao baixar a música.")
+        return
+    end
 
-                local buffer = decoder(chunk)
-                local played = false
-                while not played and isPlaying and not isPaused do
-                    played = safePlayAudio(buffer)
-                    if not played then os.pullEvent("speaker_audio_empty") end
-                end
-            else
-                os.pullEvent("basalt_heartbeat")
-            end
+    local audio = res.readAll()
+    res.close()
+
+    audioResponse = audio
+    isPlaying = true
+    isPaused = false
+    currentTime = 0
+    songLength = math.ceil(#audio / 16384)  -- estimativa de duração
+    statusLabel:setText("Tocando: " .. song.title)
+
+    -- inicia thread da barra de progresso
+    basalt.schedule(updateProgressBar)
+
+    -- toca a música em blocos
+    local chunkSize = 16384
+    local pos = 1
+    while isPlaying and pos <= #audio do
+        if not isPaused then
+            local chunk = audio:sub(pos, pos + chunkSize - 1)
+            speaker.playAudio(chunk)
+            pos = pos + chunkSize
+        else
+            os.sleep(0.1)
         end
-    end)
+    end
+
+    isPlaying = false
+    statusLabel:setText("🎵 Música finalizada.")
 end
 
 -- Eventos
-songList:onSelect(function(self, item, selected)
-    if selected then
-        for i, name in ipairs(songNames) do
-            if name == item then
-                currentSong = i
-                musicNameLabel:setText(name)
-                if isPlaying then playAudio() end
-                break
-            end
-        end
+searchButton:onClick(function()
+    local query = searchBox:getValue()
+    if query and query ~= "" then
+        searchMusic(query)
+    else
+        statusLabel:setText("Digite algo para buscar.")
     end
 end)
 
+songList:onSelect(function(self, event, item)
+    selectedIndex = item
+end)
+
 playButton:onClick(function()
-    if not isPlaying then
-        playAudio()
-    elseif isPaused then
-        isPaused = false
-        statusLabel:setText("Tocando")
-        statusLabel:setForeground(colors.lime)
+    if selectedIndex then
+        basalt.schedule(function() playSong(selectedIndex) end)
+    else
+        statusLabel:setText("Selecione uma música.")
     end
 end)
 
 pauseButton:onClick(function()
     if isPlaying then
         isPaused = not isPaused
-        statusLabel:setText(isPaused and "Pausado" or "Tocando")
-        statusLabel:setForeground(isPaused and colors.orange or colors.lime)
+        statusLabel:setText(isPaused and "⏸ Música pausada." or "▶ Retomando...")
     end
 end)
 
-stopButton:onClick(stopAudio)
-
-quitButton:onClick(function()
-    stopAudio()
-    basalt.stop()
-end)
-
-volDownButton:onClick(function()
-    volume = math.max(0, volume - 0.1)
-    volumeBar:setProgress(math.floor(volume * 100))
-end)
-
-volUpButton:onClick(function()
-    volume = math.min(1, volume + 0.1)
-    volumeBar:setProgress(math.floor(volume * 100))
+stopButton:onClick(function()
+    if isPlaying then
+        isPlaying = false
+        statusLabel:setText("⏹ Música parada.")
+    end
 end)
 
 basalt.run()
