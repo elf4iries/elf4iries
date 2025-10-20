@@ -1,7 +1,16 @@
+-- ELF4IRIES MUSIC PLAYER - versão compatível universal 💙
+-- tema navy, shuffle ativo, sem erros de progressbar/hide/show
+
+-- 🔧 verifica e carrega basalt
+if not fs.exists("/basalt") then
+    print("Baixando Basalt...")
+    shell.run("pastebin run ESs1mg7P")
+end
+
 local basalt = require("basalt")
 local dfpwm = require("cc.audio.dfpwm")
 
--- 🎶 CONFIGURAÇÃO DE MÚSICAS
+-- 🎶 playlist
 local playlist = {
     "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/AURORA%20-%20Apple%20Tree.f234.dfpwm",
     "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/AURORA%20-%20Cure%20For%20Me.f234.dfpwm",
@@ -23,7 +32,7 @@ for i, url in ipairs(playlist) do
     songNames[i] = name
 end
 
--- VARIÁVEIS PRINCIPAIS
+-- ⚙️ variáveis principais
 local speaker = peripheral.find("speaker")
 local currentSong = 1
 local isPlaying, isPaused = false, false
@@ -32,59 +41,65 @@ local shuffle = true
 local repeatTrack = false
 local audioHandle = nil
 local decoder = dfpwm.make_decoder()
+local progressValue = 0
 
--- INTERFACE 🖥️
+-- 🧠 ui base
 local main = basalt.createFrame():setBackground(colors.black)
 local playlistFrame = main:addFrame():setSize("parent.w", "parent.h"):setBackground(colors.black)
 local playerFrame = main:addFrame():setSize("parent.w", "parent.h"):setBackground(colors.black):setVisible(false)
 
--- 🎨 Cabeçalho
-local header = playlistFrame:addFrame():setSize("parent.w", 3):setBackground(colors.blue)
-header:addLabel():setText("ELF4IRIES MUSIC PLAYER"):setPosition(2,2):setForeground(colors.white)
+-- 🎨 cabeçalho
+playlistFrame:addFrame():setSize("parent.w", 3):setBackground(colors.blue)
+    :addLabel():setText("ELF4IRIES MUSIC PLAYER"):setPosition(2,2):setForeground(colors.white)
 
--- Lista de músicas
+-- lista de músicas
 local songList = playlistFrame:addList():setPosition(2,5):setSize(35,15)
 for _, name in ipairs(songNames) do songList:addItem(name) end
 
--- Botão Play
+-- botão tocar
 local playButton = playlistFrame:addButton():setText("▶ Tocar"):setSize(12,3):setPosition(2,22)
     :setBackground(colors.blue):setForeground(colors.white)
 
--- Player UI
-local title = playerFrame:addLabel():setText("Tocando:"):setPosition(2,2):setForeground(colors.lightBlue)
+-- player ui
+playerFrame:addLabel():setText("Tocando:"):setPosition(2,2):setForeground(colors.lightBlue)
 local songLabel = playerFrame:addLabel():setText(""):setPosition(2,3):setForeground(colors.white)
 local statusLabel = playerFrame:addLabel():setText("Parado"):setPosition(2,4):setForeground(colors.orange)
 
-local progress = playerFrame:addProgressbar():setPosition(2,6):setSize(46,1)
-    :setBackground(colors.gray):setProgressBar(colors.blue):setProgress(0)
+-- barra de progresso custom (sem addProgressbar)
+local progressFrame = playerFrame:addFrame():setPosition(2,6):setSize(46,1):setBackground(colors.gray)
+local progressBar = progressFrame:addFrame():setPosition(1,1):setSize(1,1):setBackground(colors.blue)
 
--- Botões de controle
+-- botões
 local pauseBtn = playerFrame:addButton():setText("⏸"):setPosition(2,8):setSize(4,2)
     :setBackground(colors.yellow):setForeground(colors.black)
 local stopBtn = playerFrame:addButton():setText("⏹"):setPosition(8,8):setSize(4,2)
     :setBackground(colors.red):setForeground(colors.white)
-local backBtn = playerFrame:addButton():setText("⏮"):setPosition(14,8):setSize(4,2)
-    :setBackground(colors.lightBlue):setForeground(colors.black)
-local nextBtn = playerFrame:addButton():setText("⏭"):setPosition(20,8):setSize(4,2)
-    :setBackground(colors.lightBlue):setForeground(colors.black)
-
-local shuffleBtn = playerFrame:addButton():setText("🔀"):setPosition(26,8):setSize(4,2)
+local nextBtn = playerFrame:addButton():setText("⏭"):setPosition(14,8):setSize(4,2)
     :setBackground(colors.blue):setForeground(colors.white)
-local repeatBtn = playerFrame:addButton():setText("🔁"):setPosition(32,8):setSize(4,2)
+local shuffleBtn = playerFrame:addButton():setText("🔀"):setPosition(20,8):setSize(4,2)
+    :setBackground(colors.blue):setForeground(colors.white)
+local repeatBtn = playerFrame:addButton():setText("🔁"):setPosition(26,8):setSize(4,2)
     :setBackground(colors.gray):setForeground(colors.white)
-
-local volLabel = playerFrame:addLabel():setText("Vol:"):setPosition(2,12):setForeground(colors.white)
-local volDown = playerFrame:addButton():setText("-"):setPosition(6,12):setSize(3,1)
-local volUp = playerFrame:addButton():setText("+"):setPosition(10,12):setSize(3,1)
 local backToList = playerFrame:addButton():setText("↩ Voltar"):setPosition(2,15):setSize(10,2)
     :setBackground(colors.blue):setForeground(colors.white)
 
--- FUNÇÕES 🎧
+-- 🔊 funções
 local function stopAudio()
     if audioHandle then pcall(function() audioHandle.close() end) end
     isPlaying, isPaused = false, false
     statusLabel:setText("Parado"):setForeground(colors.orange)
-    progress:setProgress(0)
+    progressValue = 0
+    progressBar:setSize(1,1)
+end
+
+local function updateProgress()
+    basalt.schedule(function()
+        while isPlaying do
+            progressValue = math.min(progressValue + 1, 46)
+            progressBar:setSize(progressValue, 1)
+            os.sleep(0.2)
+        end
+    end)
 end
 
 local function playAudio()
@@ -100,18 +115,17 @@ local function playAudio()
     audioHandle = handle
     isPlaying, isPaused = true, false
     statusLabel:setText("Tocando"):setForeground(colors.lime)
+    updateProgress()
 
     basalt.schedule(function()
-        local total = 0
+        local buffer
         while isPlaying do
             if isPaused then os.sleep(0.1)
             else
                 local chunk = audioHandle.read(16 * 1024)
                 if not chunk then break end
-                total = total + #chunk
-                local buffer = decoder(chunk)
+                buffer = decoder(chunk)
                 while not speaker.playAudio(buffer, volume) do os.pullEvent("speaker_audio_empty") end
-                progress:setProgress((total % 100000) / 1000)
             end
         end
         audioHandle.close()
@@ -121,7 +135,7 @@ local function playAudio()
     end)
 end
 
--- EVENTOS 🕹️
+-- 🎚️ eventos
 playButton:onClick(function()
     local selected = songList:getItemIndex()
     if selected then currentSong = selected end
@@ -139,10 +153,6 @@ pauseBtn:onClick(function()
 end)
 
 stopBtn:onClick(stopAudio)
-backBtn:onClick(function()
-    currentSong = currentSong == 1 and #playlist or currentSong - 1
-    playAudio()
-end)
 nextBtn:onClick(function()
     currentSong = currentSong % #playlist + 1
     playAudio()
@@ -158,22 +168,13 @@ repeatBtn:onClick(function()
     repeatBtn:setBackground(repeatTrack and colors.blue or colors.gray)
 end)
 
-volDown:onClick(function()
-    volume = math.max(0, volume - 0.1)
-end)
-volUp:onClick(function()
-    volume = math.min(1, volume + 0.1)
-end)
-
 backToList:onClick(function()
     stopAudio()
     playerFrame:setVisible(false)
     playlistFrame:setVisible(true)
 end)
 
--- FOOTER
 main:addLabel():setText("Speaker: " .. (speaker and "OK" or "NÃO ENCONTRADO"))
     :setPosition(2,25):setForeground(speaker and colors.lime or colors.red)
 
--- EXECUTAR
 basalt.autoUpdate()
