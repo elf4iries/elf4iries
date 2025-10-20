@@ -71,12 +71,13 @@ songList:setSize(30, 18)
 songList:setBackground(colors.gray)
 songList:setForeground(colors.white)
 
+-- Adiciona itens à lista e seleciona o primeiro
 for i, name in ipairs(songNames) do
     songList:addItem(name)
+    if i == 1 then
+        songList:setSelectedItem(name)  -- CORREÇÃO: método correto
+    end
 end
-
--- CORREÇÃO AQUI: Use setIndex em vez de setValue
-songList:setIndex(1)
 
 local controlFrame = mainContainer:addFrame()
 controlFrame:setPosition(33, 1)
@@ -101,21 +102,21 @@ statusLabel:setForeground(colors.orange)
 
 -- Botões centralizados com símbolos
 local playButton = controlFrame:addButton()
-playButton:setText("▶")  -- Símbolo de play
+playButton:setText("▶")
 playButton:setPosition(5, 5)
 playButton:setSize(8, 3)
 playButton:setBackground(colors.green)
 playButton:setForeground(colors.white)
 
 local pauseButton = controlFrame:addButton()
-pauseButton:setText("⏸")  -- Símbolo de pause
+pauseButton:setText("⏸")
 pauseButton:setPosition(5, 9)
 pauseButton:setSize(8, 3)
 pauseButton:setBackground(colors.yellow)
 pauseButton:setForeground(colors.black)
 
 local stopButton = controlFrame:addButton()
-stopButton:setText("⏹")  -- Símbolo de stop
+stopButton:setText("⏹")
 stopButton:setPosition(5, 13)
 stopButton:setSize(8, 3)
 stopButton:setBackground(colors.red)
@@ -178,7 +179,7 @@ local function playNextSong()
     if currentSong > #playlist then
         currentSong = 1
     end
-    songList:setIndex(currentSong)  -- CORREÇÃO: Use setIndex aqui também
+    songList:setSelectedItem(songNames[currentSong])  -- CORREÇÃO
     musicNameLabel:setText(songNames[currentSong])
     playAudio()
 end
@@ -249,8 +250,8 @@ function playAudio()
     end)
 end
 
--- CORREÇÃO: Ajuste o evento onSelect
-songList:onSelect(function(self, event, item, selected)
+-- CORREÇÃO: Evento onSelect simplificado
+songList:onSelect(function(self, item, selected)
     if selected then
         for i, name in ipairs(songNames) do
             if name == item then
@@ -306,5 +307,4 @@ volUpButton:onClick(function()
     volumeBar:setProgress(math.floor(volume * 100))
 end)
 
-basalt.autoUpdate()
 basalt.run()
