@@ -70,7 +70,6 @@ songList:setPosition(1, 1)
 songList:setSize(30, 18)
 songList:setBackground(colors.gray)
 songList:setForeground(colors.white)
-songList:setSelectionColor(colors.blue, colors.white)
 
 for i, name in ipairs(songNames) do
     songList:addItem(name, colors.gray, colors.white)
