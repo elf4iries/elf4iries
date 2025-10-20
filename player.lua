@@ -75,8 +75,6 @@ for i, name in ipairs(songNames) do
     songList:addItem(name)
 end
 
-songList:setValue(songNames[1])
-
 local controlFrame = mainContainer:addFrame()
 controlFrame:setPosition(33, 1)
 controlFrame:setSize(18, 18)
@@ -169,7 +167,6 @@ local function playNextSong()
     if currentSong > #playlist then
         currentSong = 1
     end
-    songList:selectItem(currentSong)
     playAudio()
 end
 
