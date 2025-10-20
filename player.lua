@@ -253,4 +253,4 @@ quitButton:onClick(function()
 end)
 
 updateDisplay()
-basalt.autoUpdate()
+basalt.run()
