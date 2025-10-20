@@ -72,7 +72,7 @@ songList:setBackground(colors.gray)
 songList:setForeground(colors.white)
 
 for i, name in ipairs(songNames) do
-    songList:addItem(name, colors.gray, colors.white)
+    songList:addItem(name)
 end
 
 songList:setValue(songNames[1])
