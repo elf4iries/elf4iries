@@ -16,8 +16,8 @@ local playlist = {
 local songNames = {}
 for i, url in ipairs(playlist) do
     local name = url:match("([^/]+)%.f234%.dfpwm$") or "Musica " .. i
-    if #name > 28 then
-        name = name:sub(1, 28) .. "..."
+    if #name > 26 then
+        name = name:sub(1, 26) .. "..."
     end
     songNames[i] = name
 end
@@ -48,35 +48,29 @@ local subtitleLabel = headerFrame:addLabel()
     :setPosition(20, 3)
     :setForeground(colors.lightBlue)
 
-local mainContainer = main:addFrame()
-    :setPosition(1, 5)
-    :setSize(51, 21)
-    :setBackground(colors.black)
+local listFrame = main:addFrame()
+    :setPosition(3, 6)
+    :setSize(28, 16)
+    :setBackground(colors.white)
 
-local listFrame = mainContainer:addFrame()
-    :setPosition(2, 1)
-    :setSize(30, 18)
-    :setBackground(colors.lightGray)
-
-local listLabel = mainContainer:addLabel()
+local listLabel = main:addLabel()
     :setText("PLAYLIST:")
-    :setPosition(2, 1)
+    :setPosition(3, 5)
     :setForeground(colors.lightBlue)
-    :setBackground(colors.black)
 
 local songList = listFrame:addList()
     :setPosition(1, 1)
-    :setSize(30, 18)
-    :setBackground(colors.lightGray)
+    :setSize(28, 16)
+    :setBackground(colors.white)
     :setForeground(colors.black)
 
 for i, name in ipairs(songNames) do
     songList:addItem(name)
 end
 
-local controlFrame = mainContainer:addFrame()
-    :setPosition(33, 1)
-    :setSize(18, 18)
+local controlFrame = main:addFrame()
+    :setPosition(33, 5)
+    :setSize(16, 20)
     :setBackground(colors.black)
 
 local nowPlayingLabel = controlFrame:addLabel()
@@ -86,60 +80,74 @@ local nowPlayingLabel = controlFrame:addLabel()
 
 local statusLabel = controlFrame:addLabel()
     :setText("Parado")
-    :setPosition(1, 3)
+    :setPosition(1, 2)
     :setForeground(colors.cyan)
 
 local playButton = controlFrame:addButton()
     :setText("PLAY")
-    :setPosition(1, 5)
-    :setSize(18, 2)
+    :setPosition(1, 4)
+    :setSize(16, 2)
     :setBackground(colors.blue)
     :setForeground(colors.white)
 
 local pauseButton = controlFrame:addButton()
     :setText("PAUSE")
-    :setPosition(1, 8)
-    :setSize(18, 2)
+    :setPosition(1, 7)
+    :setSize(16, 2)
     :setBackground(colors.cyan)
     :setForeground(colors.black)
 
 local stopButton = controlFrame:addButton()
     :setText("STOP")
-    :setPosition(1, 11)
-    :setSize(18, 2)
+    :setPosition(1, 10)
+    :setSize(16, 2)
     :setBackground(colors.lightBlue)
+    :setForeground(colors.white)
+
+local prevButton = controlFrame:addButton()
+    :setText("<< ANTERIOR")
+    :setPosition(1, 13)
+    :setSize(16, 2)
+    :setBackground(colors.blue)
+    :setForeground(colors.white)
+
+local nextButton = controlFrame:addButton()
+    :setText("PROXIMA >>")
+    :setPosition(1, 16)
+    :setSize(16, 2)
+    :setBackground(colors.blue)
     :setForeground(colors.white)
 
 local quitButton = controlFrame:addButton()
     :setText("SAIR")
-    :setPosition(1, 14)
-    :setSize(18, 2)
+    :setPosition(1, 19)
+    :setSize(16, 2)
     :setBackground(colors.gray)
     :setForeground(colors.white)
 
-local volumeLabel = controlFrame:addLabel()
-    :setText("VOLUME: 100%")
-    :setPosition(1, 17)
+local volumeLabel = main:addLabel()
+    :setText("VOL: 100%")
+    :setPosition(3, 23)
     :setForeground(colors.lightBlue)
 
-local volDownButton = controlFrame:addButton()
+local volDownButton = main:addButton()
     :setText("-")
-    :setPosition(1, 18)
-    :setSize(8, 1)
+    :setPosition(3, 24)
+    :setSize(3, 1)
     :setBackground(colors.lightGray)
     :setForeground(colors.black)
 
-local volUpButton = controlFrame:addButton()
+local volUpButton = main:addButton()
     :setText("+")
-    :setPosition(10, 18)
-    :setSize(9, 1)
+    :setPosition(7, 24)
+    :setSize(3, 1)
     :setBackground(colors.lightGray)
     :setForeground(colors.black)
 
 local footerLabel = main:addLabel()
-    :setText("Speaker: " .. (speaker and "OK" or "NAO ENCONTRADO"))
-    :setPosition(2, 26)
-    :setForeground(speaker and colors.cyan or colors.lightGray)
+    :setText("Speaker: " .. (speaker and "OK" or "NAO"))
+    :setPosition(15, 24)
+    :setForeground(speaker and colors.cyan or colors.gray)
 
 local function stopAudio()
     isPlaying = false
@@ -154,14 +162,6 @@ local function stopAudio()
     statusLabel:setForeground(colors.cyan)
 end
 
-local function playNextSong()
-    currentSong = currentSong + 1
-    if currentSong > #playlist then
-        currentSong = 1
-    end
-    playAudio()
-end
-
 function playAudio()
     if not speaker then
         statusLabel:setText("Sem speaker!")
@@ -172,7 +172,7 @@ function playAudio()
     stopAudio()
     
     local songUrl = playlist[currentSong]
-    statusLabel:setText("Carregando...")
+    statusLabel:setText("Carregando")
     statusLabel:setForeground(colors.lightBlue)
     
     local success, handle = pcall(http.get, songUrl)
@@ -180,8 +180,12 @@ function playAudio()
     if not success or not handle then
         statusLabel:setText("Erro!")
         statusLabel:setForeground(colors.gray)
-        sleep(2)
-        playNextSong()
+        sleep(1)
+        currentSong = currentSong + 1
+        if currentSong > #playlist then
+            currentSong = 1
+        end
+        playAudio()
         return
     end
     
@@ -200,7 +204,11 @@ function playAudio()
                 if not chunk then
                     stopAudio()
                     sleep(0.5)
-                    playNextSong()
+                    currentSong = currentSong + 1
+                    if currentSong > #playlist then
+                        currentSong = 1
+                    end
+                    playAudio()
                     break
                 end
                 
@@ -216,14 +224,15 @@ function playAudio()
     end)
 end
 
-songList:onChange(function(self, event, item)
-    for i, name in ipairs(songNames) do
-        if name == item.text then
-            currentSong = i
-            if isPlaying then
+songList:onClick(function(self, event, button, x, y)
+    local item = songList:getItem(y)
+    if item then
+        for i, name in ipairs(songNames) do
+            if name == item.text then
+                currentSong = i
                 playAudio()
+                break
             end
-            break
         end
     end
 end)
@@ -250,6 +259,26 @@ stopButton:onClick(function()
     stopAudio()
 end)
 
+prevButton:onClick(function()
+    currentSong = currentSong - 1
+    if currentSong < 1 then
+        currentSong = #playlist
+    end
+    if isPlaying then
+        playAudio()
+    end
+end)
+
+nextButton:onClick(function()
+    currentSong = currentSong + 1
+    if currentSong > #playlist then
+        currentSong = 1
+    end
+    if isPlaying then
+        playAudio()
+    end
+end)
+
 quitButton:onClick(function()
     stopAudio()
     basalt.stop()
@@ -257,12 +286,12 @@ end)
 
 volDownButton:onClick(function()
     volume = math.max(0, volume - 0.1)
-    volumeLabel:setText("VOLUME: " .. math.floor(volume * 100) .. "%")
+    volumeLabel:setText("VOL: " .. math.floor(volume * 100) .. "%")
 end)
 
 volUpButton:onClick(function()
     volume = math.min(1, volume + 0.1)
-    volumeLabel:setText("VOLUME: " .. math.floor(volume * 100) .. "%")
+    volumeLabel:setText("VOL: " .. math.floor(volume * 100) .. "%")
 end)
 
 basalt.run()
