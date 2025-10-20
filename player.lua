@@ -75,30 +75,30 @@ local controlFrame = main:addFrame()
 
 local nowPlayingLabel = controlFrame:addLabel()
     :setText("TOCANDO:")
-    :setPosition(1, 1)
+    :setPosition(4, 1)
     :setForeground(colors.lightBlue)
 
 local statusLabel = controlFrame:addLabel()
     :setText("Parado")
-    :setPosition(1, 2)
+    :setPosition(5, 2)
     :setForeground(colors.cyan)
 
 local playButton = controlFrame:addButton()
-    :setText("PLAY")
+    :setText("> PLAY")
     :setPosition(1, 4)
     :setSize(16, 2)
     :setBackground(colors.blue)
     :setForeground(colors.white)
 
 local pauseButton = controlFrame:addButton()
-    :setText("PAUSE")
+    :setText("|| PAUSE")
     :setPosition(1, 7)
     :setSize(16, 2)
     :setBackground(colors.cyan)
     :setForeground(colors.black)
 
 local stopButton = controlFrame:addButton()
-    :setText("STOP")
+    :setText("[] STOP")
     :setPosition(1, 10)
     :setSize(16, 2)
     :setBackground(colors.lightBlue)
@@ -119,7 +119,7 @@ local nextButton = controlFrame:addButton()
     :setForeground(colors.white)
 
 local quitButton = controlFrame:addButton()
-    :setText("SAIR")
+    :setText("X SAIR")
     :setPosition(1, 19)
     :setSize(16, 2)
     :setBackground(colors.gray)
@@ -164,7 +164,7 @@ end
 
 function playAudio()
     if not speaker then
-        statusLabel:setText("Sem speaker!")
+        statusLabel:setText("Sem speaker")
         statusLabel:setForeground(colors.gray)
         return
     end
@@ -172,7 +172,7 @@ function playAudio()
     stopAudio()
     
     local songUrl = playlist[currentSong]
-    statusLabel:setText("Carregando")
+    statusLabel:setText("Loading")
     statusLabel:setForeground(colors.lightBlue)
     
     local success, handle = pcall(http.get, songUrl)
@@ -180,12 +180,6 @@ function playAudio()
     if not success or not handle then
         statusLabel:setText("Erro!")
         statusLabel:setForeground(colors.gray)
-        sleep(1)
-        currentSong = currentSong + 1
-        if currentSong > #playlist then
-            currentSong = 1
-        end
-        playAudio()
         return
     end
     
@@ -199,23 +193,22 @@ function playAudio()
     basalt.schedule(function()
         while isPlaying and audioHandle do
             if not isPaused then
-                local chunk = audioHandle.read(16 * 1024)
+                local success2, chunk = pcall(function()
+                    return audioHandle.read(16 * 1024)
+                end)
                 
-                if not chunk then
+                if not success2 or not chunk then
                     stopAudio()
-                    sleep(0.5)
-                    currentSong = currentSong + 1
-                    if currentSong > #playlist then
-                        currentSong = 1
-                    end
-                    playAudio()
                     break
                 end
                 
                 local buffer = decoder(chunk)
                 
-                while not speaker.playAudio(buffer, volume) and isPlaying and not isPaused do
-                    os.pullEvent("speaker_audio_empty")
+                while isPlaying and not isPaused do
+                    if speaker.playAudio(buffer, volume) then
+                        break
+                    end
+                    sleep(0.05)
                 end
             else
                 sleep(0.1)
@@ -224,16 +217,12 @@ function playAudio()
     end)
 end
 
+local clickedSong = 0
 songList:onClick(function(self, event, button, x, y)
-    local item = songList:getItem(y)
-    if item then
-        for i, name in ipairs(songNames) do
-            if name == item.text then
-                currentSong = i
-                playAudio()
-                break
-            end
-        end
+    clickedSong = y
+    if clickedSong >= 1 and clickedSong <= #songNames then
+        currentSong = clickedSong
+        playAudio()
     end
 end)
 
