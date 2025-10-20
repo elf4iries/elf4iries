@@ -17,7 +17,7 @@ local playlist = {
 
 local songNames = {}
 for i, url in ipairs(playlist) do
-    local name = url:match("([^/]+)%.f234%.dfpwm$") or "Musica " .. i
+    local name = url:match("([^/]+)%.f234%.dfpwm$") or ("Musica " .. i)
     if #name > 28 then
         name = name:sub(1, 28) .. "..."
     end
@@ -34,6 +34,7 @@ local volume = 1.0
 
 main:setBackground(colors.black)
 
+-- Cabeçalho
 local headerFrame = main:addFrame()
 headerFrame:setPosition(1, 1)
 headerFrame:setSize(51, 4)
@@ -49,21 +50,23 @@ subtitleLabel:setText("by elf4iries")
 subtitleLabel:setPosition(20, 3)
 subtitleLabel:setForeground(colors.lightBlue)
 
+-- Container principal
 local mainContainer = main:addFrame()
 mainContainer:setPosition(1, 5)
 mainContainer:setSize(51, 21)
 mainContainer:setBackground(colors.black)
 
-local listFrame = mainContainer:addFrame()
-listFrame:setPosition(2, 1)
-listFrame:setSize(30, 18)
-listFrame:setBackground(colors.gray)
-
+-- Lista de músicas
 local listLabel = mainContainer:addLabel()
 listLabel:setText("PLAYLIST:")
 listLabel:setPosition(2, 1)
 listLabel:setForeground(colors.yellow)
 listLabel:setBackground(colors.black)
+
+local listFrame = mainContainer:addFrame()
+listFrame:setPosition(2, 2)
+listFrame:setSize(30, 18)
+listFrame:setBackground(colors.gray)
 
 local songList = listFrame:addList()
 songList:setPosition(1, 1)
@@ -71,17 +74,16 @@ songList:setSize(30, 18)
 songList:setBackground(colors.gray)
 songList:setForeground(colors.white)
 
--- Adiciona itens à lista e seleciona o primeiro
-for i, name in ipairs(songNames) do
+-- Adiciona músicas à lista
+for _, name in ipairs(songNames) do
     songList:addItem(name)
-    if i == 1 then
-        songList:setSelectedItem(name)  -- CORREÇÃO: método correto
-    end
 end
+songList:setSelectedItem(songNames[1])
 
+-- Painel de controle
 local controlFrame = mainContainer:addFrame()
 controlFrame:setPosition(33, 1)
-controlFrame:setSize(18, 18)
+controlFrame:setSize(18, 22)
 controlFrame:setBackground(colors.black)
 
 local nowPlayingLabel = controlFrame:addLabel()
@@ -100,7 +102,7 @@ statusLabel:setText("Parado")
 statusLabel:setPosition(1, 3)
 statusLabel:setForeground(colors.orange)
 
--- Botões centralizados com símbolos
+-- Botões
 local playButton = controlFrame:addButton()
 playButton:setText("▶")
 playButton:setPosition(5, 5)
@@ -129,13 +131,14 @@ quitButton:setSize(18, 2)
 quitButton:setBackground(colors.red)
 quitButton:setForeground(colors.white)
 
+-- Volume
 local volumeLabel = controlFrame:addLabel()
 volumeLabel:setText("VOLUME:")
-volumeLabel:setPosition(1, 19)
+volumeLabel:setPosition(1, 20)
 volumeLabel:setForeground(colors.yellow)
 
 local volumeBar = controlFrame:addProgressbar()
-volumeBar:setPosition(1, 20)
+volumeBar:setPosition(1, 21)
 volumeBar:setSize(18, 1)
 volumeBar:setProgress(100)
 volumeBar:setProgressBar(colors.blue)
@@ -143,45 +146,32 @@ volumeBar:setBackground(colors.gray)
 
 local volDownButton = controlFrame:addButton()
 volDownButton:setText("-")
-volDownButton:setPosition(1, 21)
+volDownButton:setPosition(1, 22)
 volDownButton:setSize(8, 1)
 volDownButton:setBackground(colors.gray)
 volDownButton:setForeground(colors.white)
 
 local volUpButton = controlFrame:addButton()
 volUpButton:setText("+")
-volUpButton:setPosition(10, 21)
+volUpButton:setPosition(10, 22)
 volUpButton:setSize(9, 1)
 volUpButton:setBackground(colors.gray)
 volUpButton:setForeground(colors.white)
 
+-- Status do speaker
 local footerLabel = main:addLabel()
 footerLabel:setText("Speaker: " .. (speaker and "OK" or "NAO ENCONTRADO"))
 footerLabel:setPosition(2, 26)
 footerLabel:setForeground(speaker and colors.lime or colors.red)
 
+-- Funções
 local function stopAudio()
     isPlaying = false
     isPaused = false
-    
-    if audioHandle then
-        pcall(function() audioHandle:close() end)
-        audioHandle = nil
-    end
-    decoder = nil
-    
+    if audioHandle then pcall(function() audioHandle:close() end) end
+    audioHandle, decoder = nil, nil
     statusLabel:setText("Parado")
     statusLabel:setForeground(colors.orange)
-end
-
-local function playNextSong()
-    currentSong = currentSong + 1
-    if currentSong > #playlist then
-        currentSong = 1
-    end
-    songList:setSelectedItem(songNames[currentSong])  -- CORREÇÃO
-    musicNameLabel:setText(songNames[currentSong])
-    playAudio()
 end
 
 local function safePlayAudio(buffer)
@@ -192,22 +182,27 @@ local function safePlayAudio(buffer)
     return success and result
 end
 
+local function playNextSong()
+    currentSong = currentSong + 1
+    if currentSong > #playlist then currentSong = 1 end
+    songList:setSelectedItem(songNames[currentSong])
+    musicNameLabel:setText(songNames[currentSong])
+    playAudio()
+end
+
 function playAudio()
     if not speaker then
         statusLabel:setText("Sem speaker!")
         statusLabel:setForeground(colors.red)
         return
     end
-    
     stopAudio()
-    
     local songUrl = playlist[currentSong]
     statusLabel:setText("Carregando...")
     statusLabel:setForeground(colors.yellow)
-    
+
     basalt.schedule(function()
         local success, handle = pcall(http.get, songUrl)
-        
         if not success or not handle then
             statusLabel:setText("Erro ao carregar!")
             statusLabel:setForeground(colors.red)
@@ -215,33 +210,28 @@ function playAudio()
             playNextSong()
             return
         end
-        
+
         audioHandle = handle
         decoder = require("cc.audio.dfpwm").make_decoder()
-        isPlaying = true
-        isPaused = false
+        isPlaying, isPaused = true, false
         statusLabel:setText("Tocando")
         statusLabel:setForeground(colors.lime)
-        
+
         while isPlaying and audioHandle do
             if not isPaused then
                 local chunk = audioHandle:read(16 * 1024)
-                
                 if not chunk then
                     stopAudio()
                     sleep(0.5)
                     playNextSong()
                     break
                 end
-                
+
                 local buffer = decoder(chunk)
-                
                 local played = false
                 while not played and isPlaying and not isPaused do
                     played = safePlayAudio(buffer)
-                    if not played then
-                        os.pullEvent("speaker_audio_empty")
-                    end
+                    if not played then os.pullEvent("speaker_audio_empty") end
                 end
             else
                 os.pullEvent("basalt_heartbeat")
@@ -250,16 +240,14 @@ function playAudio()
     end)
 end
 
--- CORREÇÃO: Evento onSelect simplificado
+-- Eventos
 songList:onSelect(function(self, item, selected)
     if selected then
         for i, name in ipairs(songNames) do
             if name == item then
                 currentSong = i
                 musicNameLabel:setText(name)
-                if isPlaying then
-                    playAudio()
-                end
+                if isPlaying then playAudio() end
                 break
             end
         end
@@ -277,20 +265,14 @@ playButton:onClick(function()
 end)
 
 pauseButton:onClick(function()
-    if isPlaying and not isPaused then
-        isPaused = true
-        statusLabel:setText("Pausado")
-        statusLabel:setForeground(colors.orange)
-    elseif isPlaying and isPaused then
-        isPaused = false
-        statusLabel:setText("Tocando")
-        statusLabel:setForeground(colors.lime)
+    if isPlaying then
+        isPaused = not isPaused
+        statusLabel:setText(isPaused and "Pausado" or "Tocando")
+        statusLabel:setForeground(isPaused and colors.orange or colors.lime)
     end
 end)
 
-stopButton:onClick(function()
-    stopAudio()
-end)
+stopButton:onClick(stopAudio)
 
 quitButton:onClick(function()
     stopAudio()
