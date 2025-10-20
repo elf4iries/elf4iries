@@ -1,15 +1,27 @@
 local basalt = require("basalt")
-local PLAYLIST_URL = "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/playlist.json"
 
 local main = basalt.createFrame()
 
-local playlist = {}
+local playlist = {
+    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/AURORA - Apple Tree.f234.dfpwm",
+    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/AURORA - Cure For Me.f234.dfpwm",
+    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/AURORA - Murder Song (5, 4, 3, 2, 1).f234.dfpwm",
+    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Bela Lugosi's Dead (Official Version).f234.dfpwm",
+    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Conqueror.f234.dfpwm",
+    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Dark Entries.f234.dfpwm",
+    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Dracula Teeth.f234.dfpwm",
+    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Lady Gaga - The Dead Dance (slowed + reverb).f234.dfpwm",
+    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Monolith.f234.dfpwm",
+    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Silent Hedges.f234.dfpwm"
+}
+
 local currentSong = 1
 local isPlaying = false
 local isPaused = false
 local speaker = peripheral.find("speaker")
 local audioHandle = nil
 local decoder = nil
+local playThread = nil
 
 main:setBackground(colors.black)
 
@@ -34,9 +46,9 @@ infoFrame:setSize(49, 7)
 infoFrame:setBackground(colors.gray)
 
 local statusLabel = infoFrame:addLabel()
-statusLabel:setText("Status: Carregando...")
+statusLabel:setText("Status: Pronto")
 statusLabel:setPosition(2, 2)
-statusLabel:setForeground(colors.white)
+statusLabel:setForeground(colors.lime)
 
 local songLabel = infoFrame:addLabel()
 songLabel:setText("Musica: Nenhuma")
@@ -44,7 +56,7 @@ songLabel:setPosition(2, 4)
 songLabel:setForeground(colors.lightBlue)
 
 local progressLabel = infoFrame:addLabel()
-progressLabel:setText("Progresso: 0 / 0")
+progressLabel:setText("Progresso: 0 / " .. #playlist)
 progressLabel:setPosition(2, 6)
 progressLabel:setForeground(colors.cyan)
 
@@ -99,15 +111,9 @@ local function updateDisplay()
     if #playlist > 0 then
         local songUrl = playlist[currentSong]
         local songName = songUrl:match("([^/]+)%.f234%.dfpwm$") or "Desconhecida"
-        songName = songName:gsub("%%20", " ")
-        songName = songName:gsub("%%28", "(")
-        songName = songName:gsub("%%29", ")")
-        songName = songName:gsub("%%2C", ",")
-        songName = songName:gsub("%%27", "'")
-        songName = songName:gsub("%%2B", "+")
         
-        if #songName > 35 then
-            songName = songName:sub(1, 35) .. "..."
+        if #songName > 38 then
+            songName = songName:sub(1, 38) .. "..."
         end
         
         songLabel:setText("Musica: " .. songName)
@@ -116,25 +122,29 @@ local function updateDisplay()
 end
 
 local function stopAudio()
+    isPlaying = false
+    isPaused = false
+    
     if audioHandle then
         pcall(function() audioHandle.close() end)
         audioHandle = nil
     end
-    isPlaying = false
-    isPaused = false
+    
     statusLabel:setText("Status: Parado")
     statusLabel:setForeground(colors.orange)
 end
 
-local function playAudio()
+local function playNextSong()
+    currentSong = currentSong + 1
+    if currentSong > #playlist then
+        currentSong = 1
+    end
+    playAudio()
+end
+
+function playAudio()
     if not speaker then
         statusLabel:setText("Status: Sem speaker!")
-        statusLabel:setForeground(colors.red)
-        return
-    end
-    
-    if #playlist == 0 then
-        statusLabel:setText("Status: Playlist vazia!")
         statusLabel:setForeground(colors.red)
         return
     end
@@ -146,17 +156,17 @@ local function playAudio()
     statusLabel:setText("Status: Carregando...")
     statusLabel:setForeground(colors.yellow)
     
-    local success, result = pcall(function()
-        return http.get(songUrl)
-    end)
+    local success, handle = pcall(http.get, songUrl)
     
-    if not success or not result then
-        statusLabel:setText("Status: Erro ao carregar!")
+    if not success or not handle then
+        statusLabel:setText("Status: Erro ao baixar!")
         statusLabel:setForeground(colors.red)
+        sleep(2)
+        playNextSong()
         return
     end
     
-    audioHandle = result
+    audioHandle = handle
     decoder = require("cc.audio.dfpwm").make_decoder()
     isPlaying = true
     isPaused = false
@@ -166,24 +176,18 @@ local function playAudio()
     basalt.schedule(function()
         while isPlaying and audioHandle do
             if not isPaused then
-                local success, chunk = pcall(function()
-                    return audioHandle.read(16 * 1024)
-                end)
+                local chunk = audioHandle.read(16 * 1024)
                 
-                if not success or not chunk then
+                if not chunk then
                     stopAudio()
-                    currentSong = currentSong + 1
-                    if currentSong > #playlist then
-                        currentSong = 1
-                    end
                     sleep(0.5)
-                    playAudio()
+                    playNextSong()
                     break
                 end
                 
                 local buffer = decoder(chunk)
                 
-                while not speaker.playAudio(buffer) and isPlaying do
+                while not speaker.playAudio(buffer) and isPlaying and not isPaused do
                     os.pullEvent("speaker_audio_empty")
                 end
             else
@@ -248,36 +252,5 @@ quitButton:onClick(function()
     basalt.stop()
 end)
 
-basalt.schedule(function()
-    sleep(0.5)
-    
-    local success, response = pcall(function()
-        return http.get(PLAYLIST_URL)
-    end)
-    
-    if not success or not response then
-        statusLabel:setText("Status: Erro ao carregar playlist!")
-        statusLabel:setForeground(colors.red)
-        return
-    end
-    
-    local playlistData = response.readAll()
-    response.close()
-    
-    local success2, result = pcall(function()
-        return textutils.unserialiseJSON(playlistData)
-    end)
-    
-    if not success2 or not result or #result == 0 then
-        statusLabel:setText("Status: Playlist invalida!")
-        statusLabel:setForeground(colors.red)
-        return
-    end
-    
-    playlist = result
-    statusLabel:setText("Status: Pronto! " .. #playlist .. " musicas")
-    statusLabel:setForeground(colors.lime)
-    updateDisplay()
-end)
-
-basalt.run()
+updateDisplay()
+basalt.autoUpdate()
