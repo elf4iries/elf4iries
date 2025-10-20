@@ -1,262 +1,246 @@
--- player.lua (compatibilidade com Basalt: fallback para progress bar text-based)
+-- player.lua - Música com Basalt e DFPWM
 local basalt = require("basalt")
-local speaker = peripheral.find("speaker")
+local dfpwm = require("cc.audio.dfpwm")
+-- Encontrar speakers conectados
+local speakers = { peripheral.find("speaker") }
+if #speakers == 0 then error("No speaker peripheral found") end
 
-if not speaker then
-    error("Speaker nao encontrado!")
-end
-
-local playlist = {
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/AURORA - Apple Tree.f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/AURORA - Cure For Me.f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/AURORA - Murder Song (5, 4, 3, 2, 1).f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Bela Lugosi's Dead (Official Version).f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Conqueror.f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Dark Entries.f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Dracula Teeth.f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Lady Gaga - The Dead Dance (slowed + reverb).f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Monolith.f234.dfpwm",
-    "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Silent Hedges.f234.dfpwm"
-}
-
-local songNames = {}
-for i, url in ipairs(playlist) do
-    local name = url:match("([^/]+)%.f234%.dfpwm$") or ("Musica " .. i)
-    if #name > 28 then name = name:sub(1,28) .. "..." end
-    songNames[i] = name
-end
-
-local currentSong = 1
-local isPlaying = false
+-- Variáveis de controle
 local isPaused = false
-local audioHandle = nil
-local decoder = nil
-local volume = 1.0
-local songLength = 0
-local currentTime = 0
+local breakit = false
+local returnToMenu = false
+local shuffleEnabled = false
+local playedTracks = {}
+local volume = 1.0    -- volume (0.0 a 3.0)
+local trackProgress = 0
+local currentPosition = 1
+local trackStartTime = 0
+local backPressedOnce = false
+local rootFolder = "/disk/"
 
-local main = basalt.createFrame()
-main:setBackground(colors.black)
-
--- header
-local header = main:addFrame()
-header:setPosition(1,1)
-header:setSize(51,4)
-header:setBackground(colors.blue)
-local title = header:addLabel(); title:setText("ELFSMUSIC"); title:setPosition(16,2); title:setForeground(colors.white)
-local subtitle = header:addLabel(); subtitle:setText("by elf4iries"); subtitle:setPosition(20,3); subtitle:setForeground(colors.lightBlue)
-
--- container
-local container = main:addFrame(); container:setPosition(1,5); container:setSize(51,21); container:setBackground(colors.black)
-
--- playlist label + frame + list
-local listLabel = container:addLabel(); listLabel:setText("PLAYLIST:"); listLabel:setPosition(2,1); listLabel:setForeground(colors.yellow)
-local listFrame = container:addFrame(); listFrame:setPosition(2,2); listFrame:setSize(30,18); listFrame:setBackground(colors.gray)
-local songList = listFrame:addList(); songList:setPosition(1,1); songList:setSize(30,18); songList:setBackground(colors.gray); songList:setForeground(colors.white)
-
-for i, name in ipairs(songNames) do
-    local it = { text = name }
-    if i == currentSong then it.selected = true end
-    songList:addItem(it)
+-- Contar chaves em tabela
+local function tablelength(t)
+  local count = 0 for _,_ in pairs(t) do count = count + 1 end
+  return count
 end
 
--- control frame
-local control = container:addFrame(); control:setPosition(33,1); control:setSize(18,22); control:setBackground(colors.black)
-local nowLabel = control:addLabel(); nowLabel:setText("TOCANDO:"); nowLabel:setPosition(1,1); nowLabel:setForeground(colors.yellow)
-local musicLabel = control:addLabel(); musicLabel:setPosition(1,2); musicLabel:setSize(18,1); musicLabel:setForeground(colors.white); musicLabel:setText(songNames[currentSong])
-local statusLabel = control:addLabel(); statusLabel:setText("Parado"); statusLabel:setPosition(1,3); statusLabel:setForeground(colors.orange)
+-- Ler lista de arquivos de um diretório
+local function readFolderContents(path)
+  local files = {}
+  for _, file in ipairs(fs.list(path)) do table.insert(files, file) end
+  return files
+end
 
-local playB = control:addButton(); playB:setText("▶"); playB:setPosition(5,5); playB:setSize(8,3); playB:setBackground(colors.green); playB:setForeground(colors.white)
-local pauseB = control:addButton(); pauseB:setText("⏸"); pauseB:setPosition(5,9); pauseB:setSize(8,3); pauseB:setBackground(colors.yellow); pauseB:setForeground(colors.black)
-local stopB = control:addButton(); stopB:setText("⏹"); stopB:setPosition(5,13); stopB:setSize(8,3); stopB:setBackground(colors.red); stopB:setForeground(colors.white)
-local quitB = control:addButton(); quitB:setText("SAIR"); quitB:setPosition(1,17); quitB:setSize(18,2); quitB:setBackground(colors.red); quitB:setForeground(colors.white)
-
--- ===== compat factory para progressbars =====
-local function makeProgress(parent, x, y, width, opts)
-    -- opts: {initial = 0, barChar = "█", emptyChar = " "}
-    opts = opts or {}
-    local initial = opts.initial or 0
-    local barChar = opts.barChar or "█"
-    local emptyChar = opts.emptyChar or " "
-    -- se parent tiver addProgressbar, usa nativo
-    if type(parent.addProgressbar) == "function" then
-        local pb = parent:addProgressbar()
-        if x and y then pb:setPosition(x, y) end
-        if width then pb:setSize(width, 1) end
-        pb:setBackground(colors.gray)
-        -- setProgress espera 0-100 nas docs
-        pb:setProgress(initial)
-        return {
-            setProgress = function(_, v) pb:setProgress(v) end,
-            raw = pb
-        }
+-- Tocar chunk de áudio em todos os speakers
+local function playChunk(chunk)
+  local ret = nil
+  local threads = {}
+  for i,s in ipairs(speakers) do
+    if i == 1 then
+      table.insert(threads, function() ret = s.playAudio(chunk, volume) end)
     else
-        -- fallback: cria label e desenha barra textual
-        local lbl = parent:addLabel()
-        if x and y then lbl:setPosition(x, y) end
-        lbl:setSize(width or 20, 1)
-        local function drawBar(v)
-            local pct = math.max(0, math.min(100, math.floor(v)))
-            local w = (width or 20)
-            local filled = math.floor((pct/100) * w)
-            local bar = string.rep(barChar, filled) .. string.rep(emptyChar, math.max(0, w - filled))
-            lbl:setText("[" .. bar .. "] " .. tostring(pct) .. "%")
-        end
-        drawBar(initial)
-        return {
-            setProgress = function(_, v) drawBar(v) end,
-            raw = lbl
-        }
+      table.insert(threads, function() s.playAudio(chunk, volume) end)
     end
-end
--- ===== fim factory =====
-
--- cria volume bar (usa factory)
-local volBar = makeProgress(control, 1, 20, 18, { initial = math.floor(volume * 100) })
-
-local volDown = control:addButton(); volDown:setText("-"); volDown:setPosition(1,21); volDown:setSize(8,1); volDown:setBackground(colors.gray); volDown:setForeground(colors.white)
-local volUp = control:addButton(); volUp:setText("+"); volUp:setPosition(10,21); volUp:setSize(9,1); volUp:setBackground(colors.gray); volUp:setForeground(colors.white)
-
--- cria barra de progresso da música
-local prog = makeProgress(control, 1, 23, 18, { initial = 0 })
-local progText = control:addLabel(); progText:setPosition(1,24); progText:setText("0:00 / 0:00"); progText:setForeground(colors.lightGray)
-
-local footer = main:addLabel(); footer:setText("Speaker: " .. (speaker and "OK" or "NAO ENCONTRADO")); footer:setPosition(2,26); footer:setForeground(speaker and colors.lime or colors.red)
-
--- util
-local function safePlayAudio(buffer)
-    if not speaker then return false end
-    local ok, res = pcall(function() return speaker.playAudio(buffer, volume) end)
-    return ok and res
+  end
+  parallel.waitForAll(table.unpack(threads))
+  return ret
 end
 
-local function stopAudio()
-    isPlaying = false
-    isPaused = false
-    if audioHandle then pcall(function() audioHandle:close() end) end
-    audioHandle, decoder = nil, nil
-    statusLabel:setText("Parado")
-    statusLabel:setForeground(colors.orange)
-    prog.setProgress(prog, 0)
-    progText:setText("0:00 / 0:00")
+-- Atualiza rótulo de shuffle
+local function updateShuffleStateLabel()
+  if shuffleEnabled then shuffleStateLabel:setText("Aleatório: Ligado")
+  else shuffleStateLabel:setText("Aleatório: Desligado") end
 end
 
-local function progressLooper()
-    while isPlaying do
-        if not isPaused and songLength > 0 then
-            currentTime = math.min(currentTime + 1, songLength)
-            local percent = math.floor((currentTime / songLength) * 100)
-            prog.setProgress(prog, percent)
-            progText:setText(string.format("%d:%02d / %d:%02d", math.floor(currentTime/60), currentTime%60, math.floor(songLength/60), songLength%60))
-        end
-        os.sleep(1)
+-- Alterna shuffle
+local function onShufflePressed()
+  shuffleEnabled = not shuffleEnabled
+  updateShuffleStateLabel()
+end
+
+-- Alterna play/pause
+local function togglePauseState()
+  isPaused = not isPaused
+end
+
+-- Botão voltar faixa ou reiniciar
+local function onPlaybackPressed()
+  local now = os.clock()
+  if backPressedOnce and (now - trackStartTime) <= 3 then
+    currentPosition = math.max(1, currentPosition - 1)
+    backPressedOnce = false
+  else
+    if (now - trackStartTime) > 3 then
+      currentPosition = math.max(1, currentPosition - 1)
     end
+    backPressedOnce = true
+    trackStartTime = now
+  end
+  breakit = true
 end
 
-local function playNext()
-    currentSong = currentSong + 1
-    if currentSong > #playlist then currentSong = 1 end
-    -- refaz lista para marcar selected (compatível)
-    songList:clear()
-    for i, name in ipairs(songNames) do
-        local t = { text = name }
-        if i == currentSong then t.selected = true end
-        songList:addItem(t)
-    end
-    musicLabel:setText(songNames[currentSong])
-    basalt.schedule(function() playAudio() end)
+-- Botão avançar faixa
+local function onSkipPressed()
+  breakit = true
 end
 
-function playAudio()
-    if not speaker then
-        statusLabel:setText("Sem speaker!")
-        statusLabel:setForeground(colors.red)
-        return
+-- Botão voltar ao menu principal
+local function onMainMenuButtonPressed()
+  breakit = true; returnToMenu = true
+  rootFolder = "/disk/"
+  updateFileList(rootFolder)
+  basalt.setActiveFrame(explorerFrame)
+  explorerFrame:show(); playerFrame:hide()
+  basalt.update()
+end
+
+-- Tocar arquivo DFPWM (com pause)
+local function playSound(filePath)
+  breakit = false; trackStartTime = os.clock()
+  local fileName = filePath:match("^.+/(.+)$") or filePath
+  trackLabel:setText(fileName)  -- atualiza rótulo
+  local file = fs.open(filePath, "rb")
+  if not file then return end
+  local decoder = dfpwm.make_decoder()
+  local totalSize = fs.getSize(filePath)
+  trackProgress = 0
+  while true do
+    if breakit then break end
+    if isPaused then
+      os.sleep(0.1)
+    else
+      local chunk = file.read(1024 * 16)
+      if not chunk then break end
+      local decoded = decoder(chunk)
+      if totalSize then
+        trackProgress = math.floor((file.seek() / totalSize) * 100)
+      end
+      -- Tocar, aguardando buffer vazio se necessário
+      while not playChunk(decoded) do
+        if isPaused or breakit then break end
+        os.pullEvent("speaker_audio_empty")
+      end
     end
+  end
+  file.close()
+end
 
-    stopAudio()
-    local url = playlist[currentSong]
-    statusLabel:setText("Carregando...")
-    statusLabel:setForeground(colors.yellow)
+-- Loop principal de reprodução
+local function mainLoop(initialTrackPath)
+  local fileLister = readFolderContents(rootFolder)
+  if initialTrackPath then
+    playSound(initialTrackPath)
+    -- Ajustar posição atual para a próxima faixa
+    for idx,f in ipairs(fileLister) do
+      if fs.combine(rootFolder,f) == initialTrackPath then
+        currentPosition = idx + 1; break
+      end
+    end
+  end
+  if shuffleEnabled and tablelength(playedTracks) >= #fileLister then
+    playedTracks = {}
+  end
+  while currentPosition <= #fileLister do
+    if returnToMenu then break end
+    local filePath = fs.combine(rootFolder, fileLister[currentPosition])
+    if shuffleEnabled then
+      local nextTrack
+      repeat
+        nextTrack = math.random(1, #fileLister)
+      until not playedTracks[nextTrack]
+      playedTracks[nextTrack] = true
+      currentPosition = nextTrack
+      filePath = fs.combine(rootFolder, fileLister[currentPosition])
+      playSound(filePath)
+    else
+      playSound(filePath)
+      currentPosition = currentPosition + 1
+    end
+    if currentPosition > #fileLister and not shuffleEnabled then
+      breakit = true; returnToMenu = true
+      basalt.setActiveFrame(explorerFrame)
+      explorerFrame:show(); playerFrame:hide()
+      basalt.update()
+      updateFileList("/disk/")
+      break
+    end
+  end
+end
 
-    basalt.schedule(function()
-        local ok, handle = pcall(http.get, url)
-        if not ok or not handle then
-            statusLabel:setText("Erro ao carregar")
-            statusLabel:setForeground(colors.red)
-            os.sleep(2)
-            playNext()
-            return
-        end
+-- Criar frames Basalt
+local explorerFrame = basalt.createFrame()
+explorerFrame:show()
+local playerFrame = basalt.createFrame()
 
-        -- lê todo (simples) e fecha handle
-        local data = {}
-        while true do
-            local chunk = handle:read(16 * 1024)
-            if not chunk then break end
-            table.insert(data, chunk)
-        end
-        pcall(function() handle:close() end)
-        local audio = table.concat(data)
+-- UI de exploração de arquivos
+local fileList = explorerFrame:addList()
+  :setPosition(2,2)
+  :setSize(30,15)
 
-        decoder = require("cc.audio.dfpwm").make_decoder()
-        isPlaying = true
-        isPaused = false
-        currentTime = 0
-        songLength = math.max(1, math.ceil(#audio / 16384)) -- estimativa em segundos
+function updateFileList(path)
+  fileList:clear()
+  for _,f in ipairs(fs.list(path)) do fileList:addItem(f) end
+end
 
-        statusLabel:setText("Tocando")
-        statusLabel:setForeground(colors.lime)
-        musicLabel:setText(songNames[currentSong])
-
-        basalt.schedule(progressLooper)
-
-        local pos = 1
-        local chunkSize = 16384
-        while isPlaying and pos <= #audio do
-            if not isPaused then
-                local rawChunk = audio:sub(pos, pos + chunkSize - 1)
-                local okPlay = safePlayAudio(decoder(rawChunk))
-                if not okPlay then os.pullEvent("speaker_audio_empty") end
-                pos = pos + chunkSize
-            else
-                os.sleep(0.1)
+fileList:onSelect(function(self, evt, item)
+  if item and item.text then
+    local selPath = fs.combine(rootFolder, item.text)
+    if fs.isDir(selPath) then
+      rootFolder = selPath .. "/"
+      updateFileList(rootFolder)
+    else
+      basalt.setActiveFrame(playerFrame)
+      playerFrame:show(); explorerFrame:hide()
+      parallel.waitForAll(
+        function() mainLoop(selPath) end,
+        function()
+          breakit = false; returnToMenu = false
+          local sw, sh = playerFrame:getSize()
+          -- Nome da faixa
+          trackLabel = playerFrame:addLabel():setPosition(1,2):setSize(sw,1):setText(item.text)
+          -- Botão Shuffle
+          playerFrame:addButton():setText("Aleatório"):setPosition(1,4):setSize(10,1):onClick(onShufflePressed)
+          shuffleStateLabel = playerFrame:addLabel():setText("Aleatório: Desligado"):setPosition(12,4):setSize(10,1)
+          -- Slider de volume
+          playerFrame:addLabel():setText("Volume:"):setPosition(1,6)
+          local volumeSlider = playerFrame:addSlider():setPosition(10,6):setSize(sw-11,1):setMax(300):setValue(volume*100)
+          volumeSlider:onChange(function(_,val) volume = val/100 end)
+          -- Slider de progresso
+          playerFrame:addLabel():setText("Progresso:"):setPosition(1,8)
+          local progressSlider = playerFrame:addSlider():setPosition(12,8):setSize(sw-13,1):setMax(100)
+          progressSlider:onChange(function() progressSlider:setValue(trackProgress) end)
+          -- Botões de controle
+          local bottomY = sh - 2
+          playerFrame:addButton():setText("="):setPosition(1,1):setSize(3,1):onClick(onMainMenuButtonPressed)
+          playerFrame:addButton():setText("<"):setPosition(3,bottomY):setSize(3,1):onClick(onPlaybackPressed)
+          playerFrame:addButton():setText("||"):setPosition(8,bottomY):setSize(3,1):onClick(togglePauseState)
+          playerFrame:addButton():setText(">"):setPosition(13,bottomY):setSize(3,1):onClick(onSkipPressed)
+          -- Visualizador de barras
+          local numBars=16; local bw=1; local vh=10
+          local vsx = math.floor((sw - numBars*bw)/2); local vsy = sh - vh - 3
+          local bars={}
+          for i=1,numBars do
+            local xpos = vsx + (i-1)*bw
+            bars[i] = playerFrame:addLabel():setPosition(xpos,vsy):setSize(bw,vh):setText("|")
+          end
+          -- Loop de eventos do playerFrame
+          while true do
+            if returnToMenu then break end
+            updateShuffleStateLabel()
+            for i=1,numBars do
+              local h = isPaused and 0 or math.random(1,vh)
+              bars[i]:setText(string.rep("|",h))
             end
+            progressSlider:setValue(trackProgress)
+            local ev = {os.pullEventRaw()}
+            basalt.update(table.unpack(ev))
+          end
         end
-
-        isPlaying = false
-        statusLabel:setText("Finalizado")
-        prog.setProgress(prog, 100)
-        os.sleep(0.5)
-        playNext()
-    end)
-end
-
--- List onSelect (docs oficiais: onSelect(index, item))
-songList:onSelect(function(index, item)
-    if index and type(index) == "number" then
-        currentSong = index
-        musicLabel:setText(songNames[currentSong])
-        -- atualiza visual selected
-        songList:clear()
-        for i, name in ipairs(songNames) do
-            local t = { text = name }
-            if i == currentSong then t.selected = true end
-            songList:addItem(t)
-        end
+      )
     end
+  end
 end)
 
-playB:onClick(function()
-    if not isPlaying then basalt.schedule(function() playAudio() end)
-    elseif isPaused then isPaused = false; statusLabel:setText("Tocando") end
-end)
-
-pauseB:onClick(function() if isPlaying then isPaused = not isPaused; statusLabel:setText(isPaused and "Pausado" or "Tocando") end end)
-stopB:onClick(function() stopAudio() end)
-quitB:onClick(function() stopAudio(); basalt.stop() end)
-
-volDown:onClick(function() volume = math.max(0, volume - 0.1); volBar.setProgress(volBar, math.floor(volume*100)) end)
-volUp:onClick(function() volume = math.min(1, volume + 0.1); volBar.setProgress(volBar, math.floor(volume*100)) end)
-
-basalt.run()
+-- Iniciar lista e rodar UI
+updateFileList(rootFolder)
+basalt.autoUpdate()
