@@ -15,19 +15,28 @@ local playlist = {
     "https://raw.githubusercontent.com/elf4iries/elf4iries/main/musicas/Silent Hedges.f234.dfpwm"
 }
 
+local songNames = {}
+for i, url in ipairs(playlist) do
+    local name = url:match("([^/]+)%.f234%.dfpwm$") or "Musica " .. i
+    if #name > 28 then
+        name = name:sub(1, 28) .. "..."
+    end
+    songNames[i] = name
+end
+
 local currentSong = 1
 local isPlaying = false
 local isPaused = false
 local speaker = peripheral.find("speaker")
 local audioHandle = nil
 local decoder = nil
-local playThread = nil
+local volume = 1.0
 
 main:setBackground(colors.black)
 
 local headerFrame = main:addFrame()
 headerFrame:setPosition(1, 1)
-headerFrame:setSize(51, 5)
+headerFrame:setSize(51, 4)
 headerFrame:setBackground(colors.blue)
 
 local titleLabel = headerFrame:addLabel()
@@ -40,86 +49,108 @@ subtitleLabel:setText("by elf4iries")
 subtitleLabel:setPosition(20, 3)
 subtitleLabel:setForeground(colors.lightBlue)
 
-local infoFrame = main:addFrame()
-infoFrame:setPosition(2, 7)
-infoFrame:setSize(49, 7)
-infoFrame:setBackground(colors.gray)
+local mainContainer = main:addFrame()
+mainContainer:setPosition(1, 5)
+mainContainer:setSize(51, 21)
+mainContainer:setBackground(colors.black)
 
-local statusLabel = infoFrame:addLabel()
-statusLabel:setText("Status: Pronto")
-statusLabel:setPosition(2, 2)
-statusLabel:setForeground(colors.lime)
+local listFrame = mainContainer:addFrame()
+listFrame:setPosition(2, 1)
+listFrame:setSize(30, 18)
+listFrame:setBackground(colors.gray)
 
-local songLabel = infoFrame:addLabel()
-songLabel:setText("Musica: Nenhuma")
-songLabel:setPosition(2, 4)
-songLabel:setForeground(colors.lightBlue)
+local listLabel = mainContainer:addLabel()
+listLabel:setText("PLAYLIST:")
+listLabel:setPosition(2, 1)
+listLabel:setForeground(colors.yellow)
+listLabel:setBackground(colors.black)
 
-local progressLabel = infoFrame:addLabel()
-progressLabel:setText("Progresso: 0 / " .. #playlist)
-progressLabel:setPosition(2, 6)
-progressLabel:setForeground(colors.cyan)
+local songList = listFrame:addList()
+songList:setPosition(1, 1)
+songList:setSize(30, 18)
+songList:setBackground(colors.gray)
+songList:setForeground(colors.white)
+songList:setSelectionColor(colors.blue, colors.white)
 
-local playButton = main:addButton()
+for i, name in ipairs(songNames) do
+    songList:addItem(name, colors.gray, colors.white)
+end
+
+songList:setValue(songNames[1])
+
+local controlFrame = mainContainer:addFrame()
+controlFrame:setPosition(33, 1)
+controlFrame:setSize(18, 18)
+controlFrame:setBackground(colors.black)
+
+local nowPlayingLabel = controlFrame:addLabel()
+nowPlayingLabel:setText("TOCANDO:")
+nowPlayingLabel:setPosition(1, 1)
+nowPlayingLabel:setForeground(colors.yellow)
+
+local statusLabel = controlFrame:addLabel()
+statusLabel:setText("Parado")
+statusLabel:setPosition(1, 3)
+statusLabel:setForeground(colors.orange)
+
+local playButton = controlFrame:addButton()
 playButton:setText("PLAY")
-playButton:setPosition(2, 16)
-playButton:setSize(10, 3)
+playButton:setPosition(1, 5)
+playButton:setSize(18, 2)
 playButton:setBackground(colors.blue)
 playButton:setForeground(colors.white)
 
-local pauseButton = main:addButton()
+local pauseButton = controlFrame:addButton()
 pauseButton:setText("PAUSE")
-pauseButton:setPosition(13, 16)
-pauseButton:setSize(10, 3)
+pauseButton:setPosition(1, 8)
+pauseButton:setSize(18, 2)
 pauseButton:setBackground(colors.cyan)
 pauseButton:setForeground(colors.black)
 
-local stopButton = main:addButton()
+local stopButton = controlFrame:addButton()
 stopButton:setText("STOP")
-stopButton:setPosition(24, 16)
-stopButton:setSize(10, 3)
+stopButton:setPosition(1, 11)
+stopButton:setSize(18, 2)
 stopButton:setBackground(colors.lightBlue)
 stopButton:setForeground(colors.white)
 
-local prevButton = main:addButton()
-prevButton:setText("<< ANTERIOR")
-prevButton:setPosition(2, 20)
-prevButton:setSize(15, 3)
-prevButton:setBackground(colors.blue)
-prevButton:setForeground(colors.white)
-
-local nextButton = main:addButton()
-nextButton:setText("PROXIMA >>")
-nextButton:setPosition(18, 20)
-nextButton:setSize(15, 3)
-nextButton:setBackground(colors.blue)
-nextButton:setForeground(colors.white)
-
-local quitButton = main:addButton()
+local quitButton = controlFrame:addButton()
 quitButton:setText("SAIR")
-quitButton:setPosition(35, 20)
-quitButton:setSize(8, 3)
+quitButton:setPosition(1, 14)
+quitButton:setSize(18, 2)
 quitButton:setBackground(colors.red)
 quitButton:setForeground(colors.white)
 
-local speakerLabel = main:addLabel()
-speakerLabel:setText("Speaker: " .. (speaker and "OK" or "NAO"))
-speakerLabel:setPosition(2, 24)
-speakerLabel:setForeground(speaker and colors.lime or colors.red)
+local volumeLabel = controlFrame:addLabel()
+volumeLabel:setText("VOLUME:")
+volumeLabel:setPosition(1, 17)
+volumeLabel:setForeground(colors.yellow)
 
-local function updateDisplay()
-    if #playlist > 0 then
-        local songUrl = playlist[currentSong]
-        local songName = songUrl:match("([^/]+)%.f234%.dfpwm$") or "Desconhecida"
-        
-        if #songName > 38 then
-            songName = songName:sub(1, 38) .. "..."
-        end
-        
-        songLabel:setText("Musica: " .. songName)
-        progressLabel:setText("Progresso: " .. currentSong .. " / " .. #playlist)
-    end
-end
+local volumeBar = controlFrame:addProgressbar()
+volumeBar:setPosition(1, 18)
+volumeBar:setSize(18, 1)
+volumeBar:setProgress(100)
+volumeBar:setProgressBar(colors.blue)
+volumeBar:setBackground(colors.gray)
+
+local volDownButton = controlFrame:addButton()
+volDownButton:setText("-")
+volDownButton:setPosition(1, 19)
+volDownButton:setSize(8, 1)
+volDownButton:setBackground(colors.gray)
+volDownButton:setForeground(colors.white)
+
+local volUpButton = controlFrame:addButton()
+volUpButton:setText("+")
+volUpButton:setPosition(10, 19)
+volUpButton:setSize(9, 1)
+volUpButton:setBackground(colors.gray)
+volUpButton:setForeground(colors.white)
+
+local footerLabel = main:addLabel()
+footerLabel:setText("Speaker: " .. (speaker and "OK" or "NAO ENCONTRADO"))
+footerLabel:setPosition(2, 26)
+footerLabel:setForeground(speaker and colors.lime or colors.red)
 
 local function stopAudio()
     isPlaying = false
@@ -130,7 +161,7 @@ local function stopAudio()
         audioHandle = nil
     end
     
-    statusLabel:setText("Status: Parado")
+    statusLabel:setText("Parado")
     statusLabel:setForeground(colors.orange)
 end
 
@@ -139,12 +170,13 @@ local function playNextSong()
     if currentSong > #playlist then
         currentSong = 1
     end
+    songList:selectItem(currentSong)
     playAudio()
 end
 
 function playAudio()
     if not speaker then
-        statusLabel:setText("Status: Sem speaker!")
+        statusLabel:setText("Sem speaker!")
         statusLabel:setForeground(colors.red)
         return
     end
@@ -152,14 +184,13 @@ function playAudio()
     stopAudio()
     
     local songUrl = playlist[currentSong]
-    updateDisplay()
-    statusLabel:setText("Status: Carregando...")
+    statusLabel:setText("Carregando...")
     statusLabel:setForeground(colors.yellow)
     
     local success, handle = pcall(http.get, songUrl)
     
     if not success or not handle then
-        statusLabel:setText("Status: Erro ao baixar!")
+        statusLabel:setText("Erro!")
         statusLabel:setForeground(colors.red)
         sleep(2)
         playNextSong()
@@ -170,7 +201,7 @@ function playAudio()
     decoder = require("cc.audio.dfpwm").make_decoder()
     isPlaying = true
     isPaused = false
-    statusLabel:setText("Status: Tocando")
+    statusLabel:setText("Tocando")
     statusLabel:setForeground(colors.lime)
     
     basalt.schedule(function()
@@ -187,7 +218,7 @@ function playAudio()
                 
                 local buffer = decoder(chunk)
                 
-                while not speaker.playAudio(buffer) and isPlaying and not isPaused do
+                while not speaker.playAudio(buffer, volume) and isPlaying and not isPaused do
                     os.pullEvent("speaker_audio_empty")
                 end
             else
@@ -197,12 +228,24 @@ function playAudio()
     end)
 end
 
+songList:onSelect(function(self, event, item)
+    for i, name in ipairs(songNames) do
+        if name == item.text then
+            currentSong = i
+            if isPlaying then
+                playAudio()
+            end
+            break
+        end
+    end
+end)
+
 playButton:onClick(function()
     if not isPlaying then
         playAudio()
     elseif isPaused then
         isPaused = false
-        statusLabel:setText("Status: Tocando")
+        statusLabel:setText("Tocando")
         statusLabel:setForeground(colors.lime)
     end
 end)
@@ -210,7 +253,7 @@ end)
 pauseButton:onClick(function()
     if isPlaying and not isPaused then
         isPaused = true
-        statusLabel:setText("Status: Pausado")
+        statusLabel:setText("Pausado")
         statusLabel:setForeground(colors.orange)
     end
 end)
@@ -219,38 +262,19 @@ stopButton:onClick(function()
     stopAudio()
 end)
 
-nextButton:onClick(function()
-    if #playlist > 0 then
-        currentSong = currentSong + 1
-        if currentSong > #playlist then
-            currentSong = 1
-        end
-        if isPlaying then
-            playAudio()
-        else
-            updateDisplay()
-        end
-    end
-end)
-
-prevButton:onClick(function()
-    if #playlist > 0 then
-        currentSong = currentSong - 1
-        if currentSong < 1 then
-            currentSong = #playlist
-        end
-        if isPlaying then
-            playAudio()
-        else
-            updateDisplay()
-        end
-    end
-end)
-
 quitButton:onClick(function()
     stopAudio()
     basalt.stop()
 end)
 
-updateDisplay()
+volDownButton:onClick(function()
+    volume = math.max(0, volume - 0.1)
+    volumeBar:setProgress(math.floor(volume * 100))
+end)
+
+volUpButton:onClick(function()
+    volume = math.min(1, volume + 0.1)
+    volumeBar:setProgress(math.floor(volume * 100))
+end)
+
 basalt.run()
